@@ -191,8 +191,8 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
     try {
       let code = \`${mainPageFile.content.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
 
-      // Remove imports
-      code = code.replace(/import[^;]+;\\s*/g, '');
+      // Remove import lines (with or without semicolons)
+      code = code.replace(/^import.*$/gm, '');
       // Handle exports
       code = code.replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function MainComponent');
       code = code.replace(/export\\s+default\\s+/g, 'const MainComponent = ');
