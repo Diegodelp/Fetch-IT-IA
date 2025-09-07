@@ -206,6 +206,10 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
       // Transpile TSX/JSX to plain JavaScript
       const transformed = Babel.transform(code, {
         presets: ['env', 'react', 'typescript'],
+        filename: 'file.tsx',
+        parserOpts: {
+          plugins: ['jsx', 'typescript'],
+        },
       }).code;
 
       const componentFunction = new Function(
