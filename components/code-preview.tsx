@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,16 +18,17 @@ interface CodePreviewProps {
 }
 
 export function CodePreview({ files, onDownload }: CodePreviewProps) {
-  const [activeTab, setActiveTab] = useState("preview")
-  const [selectedFile, setSelectedFile] = useState<string>("")
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["app", "components"]))
+    const [activeTab, setActiveTab] = useState("preview")
+    const [selectedFile, setSelectedFile] = useState<string>("")
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["app", "components"]))
 
-  useState(() => {
-    if (files.length > 0) {
-      const mainFile = files.find((f) => f.name === "app/page.tsx") || files[0]
-      setSelectedFile(mainFile.name)
-    }
-  }, [files])
+    // Select the initial file once the generated files are available
+    useEffect(() => {
+      if (files.length > 0) {
+        const mainFile = files.find((f) => f.name === "app/page.tsx") || files[0]
+        setSelectedFile(mainFile.name)
+      }
+    }, [files])
 
   const organizeFiles = () => {
     const structure: { [key: string]: GeneratedFile[] } = {}
