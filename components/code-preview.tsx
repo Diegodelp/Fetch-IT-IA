@@ -54,6 +54,50 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
   const currentFile = files.find((f) => f.name === selectedFile)
   const mainPageFile = files.find((f) => f.name === "app/page.tsx")
 
+  const toComponentName = (fileName: string) => {
+    const base = fileName.split("/").pop()?.split(".")[0] || "Component"
+    return base
+      .replace(/[-_](.)/g, (_, c) => c.toUpperCase())
+      .replace(/^(.)/, (c) => c.toUpperCase())
+  }
+
+  const previewScripts = files
+    .map((file) => {
+      const componentName =
+        file.name === "app/page.tsx" ? "MainComponent" : toComponentName(file.name)
+      let code = file.content
+      code = code.replace(/^import.*$/gm, "")
+      code = code.replace(/["']use client["'];?/g, "")
+      code = code.replace(
+        /export\s+default\s+function\s+(\w+)/,
+        `function ${componentName}`
+      )
+      code = code.replace(
+        /export\s+default\s+/,
+        `const ${componentName} = `
+      )
+      code = code.replace(/export\s+const\s+/g, "const ")
+      code = code.replace(/export\s+function\s+/g, "function ")
+      if (
+        !code.includes(`function ${componentName}`) &&
+        !code.includes(`const ${componentName}`)
+      ) {
+        code = `const ${componentName} = () => (${code});`
+      }
+      return `// File: ${file.name}
+      (function(){
+        const code = ${JSON.stringify(code)};
+        const transformed = Babel.transform(code, {
+          presets: ['env', 'react', 'typescript'],
+          sourceType: 'script',
+          parserOpts: { plugins: ['jsx', 'typescript'] }
+        }).code;
+        const fn = new Function('React','useState','useEffect','useRef','Image','Link','Button','Card','CardHeader','CardTitle','CardContent', transformed + '; return ${componentName};');
+        window['${componentName}'] = fn(React, useState, useEffect, useRef, Image, Link, Button, Card, CardHeader, CardTitle, CardContent);
+      })();`
+    })
+    .join("\n")
+
   const handleCopyCode = () => {
     if (currentFile) {
       navigator.clipboard.writeText(currentFile.content)
@@ -140,15 +184,15 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, sans-serif; }
-    .error-container { 
-      color: #dc2626; 
-      background: #fef2f2; 
-      border: 1px solid #fecaca; 
-      border-radius: 8px; 
-      padding: 16px; 
-      margin: 16px 0; 
-      font-family: monospace; 
-      white-space: pre-wrap; 
+    .error-container {
+      color: #dc2626;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 16px 0;
+      font-family: monospace;
+      white-space: pre-wrap;
     }
   </style>
 </head>
@@ -156,15 +200,15 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
-    
-    const Image = (props) => React.createElement('img', { 
-      ...props, 
+
+    const Image = (props) => React.createElement('img', {
+      ...props,
       onError: (e) => { e.target.src = 'https://via.placeholder.com/400x300?text=Image'; }
     });
-    
-    const Link = ({ href, children, ...props }) => 
+
+    const Link = ({ href, children, ...props }) =>
       React.createElement('a', { href: href || '#', ...props }, children);
-    
+
     const Button = ({ children, className = '', variant = 'default', size = 'default', ...props }) => {
       const baseClasses = 'inline-flex items-center justify-center rounded-md font-medium transition-colors px-4 py-2 bg-blue-600 text-white hover:bg-blue-700';
       return React.createElement('button', {
@@ -172,70 +216,30 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
         ...props
       }, children);
     };
-    
-    const Card = ({ children, className = '', ...props }) => 
-      React.createElement('div', { 
-        className: 'rounded-lg border bg-white shadow-sm p-6 ' + className, 
-        ...props 
+
+    const Card = ({ children, className = '', ...props }) =>
+      React.createElement('div', {
+        className: 'rounded-lg border bg-white shadow-sm p-6 ' + className,
+        ...props
       }, children);
-    
-    const CardHeader = ({ children, className = '', ...props }) => 
+
+    const CardHeader = ({ children, className = '', ...props }) =>
       React.createElement('div', { className: 'mb-4 ' + className, ...props }, children);
-    
-    const CardTitle = ({ children, className = '', ...props }) => 
+
+    const CardTitle = ({ children, className = '', ...props }) =>
       React.createElement('h3', { className: 'text-xl font-semibold ' + className, ...props }, children);
-    
+
     const CardContent = ({ children, className = '', ...props }) =>
       React.createElement('div', { className: className, ...props }, children);
 
     try {
-      let code = \`${mainPageFile.content.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
-
-      // Remove import lines (with or without semicolons)
-      code = code.replace(/^import.*$/gm, '');
-      // Handle exports
-      code = code.replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function MainComponent');
-      code = code.replace(/export\\s+default\\s+/g, 'const MainComponent = ');
-      code = code.replace(/export\\s+const\\s+/g, 'const ');
-
-      // If no component found, wrap the JSX
-      if (!code.includes('function MainComponent') && !code.includes('const MainComponent')) {
-        code = 'const MainComponent = () => (' + code + ');';
-      }
-
-      // Transpile TSX/JSX to plain JavaScript
-      const transformed = Babel.transform(code, {
-        presets: ['env', 'react', 'typescript'],
-        filename: 'file.tsx',
-        parserOpts: {
-          plugins: ['jsx', 'typescript'],
-        },
-      }).code;
-
-      const componentFunction = new Function(
-        'React',
-        'useState',
-        'useEffect',
-        'useRef',
-        'Image',
-        'Link',
-        'Button',
-        'Card',
-        'CardHeader',
-        'CardTitle',
-        'CardContent',
-        transformed + '; return MainComponent;'
-      );
-      
-      const MainComponent = componentFunction(React, useState, useEffect, useRef, Image, Link, Button, Card, CardHeader, CardTitle, CardContent);
-      
+      ${previewScripts}
       const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(React.createElement(MainComponent));
-      
+      root.render(React.createElement(window['MainComponent']));
     } catch (error) {
       console.error('Rendering error:', error);
-      document.getElementById('root').innerHTML = 
-        '<div class="error-container"><strong>Error rendering component:</strong>\\n\\n' + 
+      document.getElementById('root').innerHTML =
+        '<div class="error-container"><strong>Error rendering component:</strong>\\n\\n' +
         error.message + '\\n\\nPlease check the console for more details.</div>';
     }
   </script>
