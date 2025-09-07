@@ -185,27 +185,43 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
     const CardTitle = ({ children, className = '', ...props }) => 
       React.createElement('h3', { className: 'text-xl font-semibold ' + className, ...props }, children);
     
-    const CardContent = ({ children, className = '', ...props }) => 
+    const CardContent = ({ children, className = '', ...props }) =>
       React.createElement('div', { className: className, ...props }, children);
 
     try {
       let code = \`${mainPageFile.content.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
-      
+
       // Remove imports
       code = code.replace(/import[^;]+;\\s*/g, '');
-      
-      // Handle export default function
+      // Handle exports
       code = code.replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function MainComponent');
-      
-      // Handle export default arrow function
       code = code.replace(/export\\s+default\\s+/g, 'const MainComponent = ');
-      
+      code = code.replace(/export\\s+const\\s+/g, 'const ');
+
       // If no component found, wrap the JSX
       if (!code.includes('function MainComponent') && !code.includes('const MainComponent')) {
         code = 'const MainComponent = () => (' + code + ');';
       }
-      
-      const componentFunction = new Function('React', 'useState', 'useEffect', 'useRef', 'Image', 'Link', 'Button', 'Card', 'CardHeader', 'CardTitle', 'CardContent', code + '; return MainComponent;');
+
+      // Transpile TSX/JSX to plain JavaScript
+      const transformed = Babel.transform(code, {
+        presets: ['env', 'react', 'typescript'],
+      }).code;
+
+      const componentFunction = new Function(
+        'React',
+        'useState',
+        'useEffect',
+        'useRef',
+        'Image',
+        'Link',
+        'Button',
+        'Card',
+        'CardHeader',
+        'CardTitle',
+        'CardContent',
+        transformed + '; return MainComponent;'
+      );
       
       const MainComponent = componentFunction(React, useState, useEffect, useRef, Image, Link, Button, Card, CardHeader, CardTitle, CardContent);
       
