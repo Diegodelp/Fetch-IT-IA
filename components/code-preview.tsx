@@ -30,27 +30,80 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
       }
     }, [files])
 
-  const organizeFiles = () => {
-    const structure: { [key: string]: GeneratedFile[] } = {}
+  interface TreeNode {
+    type: "file" | "folder"
+    name: string
+    path: string
+    children?: TreeNode[]
+  }
+
+  const buildFileTree = () => {
+    const root: TreeNode = { type: "folder", name: "root", path: "", children: [] }
 
     files.forEach((file) => {
       const parts = file.name.split("/")
-      if (parts.length === 1) {
-        // Root files
-        if (!structure["root"]) structure["root"] = []
-        structure["root"].push(file)
-      } else {
-        // Files in folders
-        const folder = parts[0]
-        if (!structure[folder]) structure[folder] = []
-        structure[folder].push(file)
-      }
+      let current = root
+      parts.forEach((part, index) => {
+        const currentPath = [...parts.slice(0, index + 1)].join("/")
+        if (index === parts.length - 1) {
+          current.children!.push({
+            type: "file",
+            name: part,
+            path: file.name,
+          })
+        } else {
+          let folder = current.children!.find(
+            (n) => n.type === "folder" && n.name === part,
+          ) as TreeNode | undefined
+          if (!folder) {
+            folder = { type: "folder", name: part, path: currentPath, children: [] }
+            current.children!.push(folder)
+          }
+          current = folder
+        }
+      })
     })
 
-    return structure
+    return root.children || []
   }
 
-  const fileStructure = organizeFiles()
+  const fileTree = buildFileTree()
+  const renderTree = (node: TreeNode) => {
+    if (node.type === "file") {
+      return (
+        <button
+          key={node.path}
+          onClick={() => setSelectedFile(node.path)}
+          className={`flex items-center w-full text-left px-2 py-1 text-sm rounded hover:bg-gray-200 ${
+            selectedFile === node.path ? "bg-emerald-100 text-emerald-700" : "text-gray-700"
+          }`}
+        >
+          <File className="w-4 h-4 mr-2" />
+          {node.name}
+        </button>
+      )
+    }
+    return (
+      <div key={node.path} className="mb-2">
+        <button
+          onClick={() => toggleFolder(node.path)}
+          className="flex items-center w-full text-left px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded"
+        >
+          {expandedFolders.has(node.path) ? (
+            <FolderOpen className="w-4 h-4 mr-2" />
+          ) : (
+            <Folder className="w-4 h-4 mr-2" />
+          )}
+          {node.name}/
+        </button>
+        {expandedFolders.has(node.path) && (
+          <div className="ml-4">
+            {node.children?.map((child) => renderTree(child))}
+          </div>
+        )}
+      </div>
+    )
+  }
   const currentFile = files.find((f) => f.name === selectedFile)
   const mainPageFile = files.find((f) => f.name === "app/page.tsx")
 
@@ -61,7 +114,12 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
       .replace(/^(.)/, (c) => c.toUpperCase())
   }
 
-  const previewScripts = files
+  const previewFiles = [
+    ...files.filter((f) => f.name !== "app/page.tsx"),
+    files.find((f) => f.name === "app/page.tsx"),
+  ].filter(Boolean) as GeneratedFile[]
+
+  const previewScripts = previewFiles
     .map((file) => {
       const componentName =
         file.name === "app/page.tsx" ? "MainComponent" : toComponentName(file.name)
@@ -259,56 +317,7 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
             <div className="w-64 border-r bg-gray-50 overflow-y-auto">
               <div className="p-3">
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Files</h3>
-                {Object.entries(fileStructure).map(([folder, folderFiles]) => (
-                  <div key={folder} className="mb-2">
-                    {folder === "root" ? (
-                      // Root files
-                      folderFiles.map((file) => (
-                        <button
-                          key={file.name}
-                          onClick={() => setSelectedFile(file.name)}
-                          className={`flex items-center w-full text-left px-2 py-1 text-sm rounded hover:bg-gray-200 ${
-                            selectedFile === file.name ? "bg-emerald-100 text-emerald-700" : "text-gray-700"
-                          }`}
-                        >
-                          <File className="w-4 h-4 mr-2" />
-                          {file.name}
-                        </button>
-                      ))
-                    ) : (
-                      // Folder structure
-                      <div>
-                        <button
-                          onClick={() => toggleFolder(folder)}
-                          className="flex items-center w-full text-left px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded"
-                        >
-                          {expandedFolders.has(folder) ? (
-                            <FolderOpen className="w-4 h-4 mr-2" />
-                          ) : (
-                            <Folder className="w-4 h-4 mr-2" />
-                          )}
-                          {folder}/
-                        </button>
-                        {expandedFolders.has(folder) && (
-                          <div className="ml-4">
-                            {folderFiles.map((file) => (
-                              <button
-                                key={file.name}
-                                onClick={() => setSelectedFile(file.name)}
-                                className={`flex items-center w-full text-left px-2 py-1 text-sm rounded hover:bg-gray-200 ${
-                                  selectedFile === file.name ? "bg-emerald-100 text-emerald-700" : "text-gray-700"
-                                }`}
-                              >
-                                <File className="w-4 h-4 mr-2" />
-                                {file.name.split("/").pop()}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {fileTree.map((node) => renderTree(node))}
               </div>
             </div>
 
