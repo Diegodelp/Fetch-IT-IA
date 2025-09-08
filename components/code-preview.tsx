@@ -148,6 +148,7 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
         const transformed = Babel.transform(code, {
           presets: ['env', 'react', 'typescript'],
           sourceType: 'script',
+          filename: ${JSON.stringify(file.name)},
           parserOpts: { plugins: ['jsx', 'typescript'] }
         }).code;
         const fn = new Function('React','useState','useEffect','useRef','Image','Link','Button','Card','CardHeader','CardTitle','CardContent', transformed + '; return ${componentName};');
