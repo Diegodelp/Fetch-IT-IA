@@ -136,12 +136,6 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
       )
       code = code.replace(/export\s+const\s+/g, "const ")
       code = code.replace(/export\s+function\s+/g, "function ")
-      if (
-        !code.includes(`function ${componentName}`) &&
-        !code.includes(`const ${componentName}`)
-      ) {
-        code = `const ${componentName} = () => (${code});`
-      }
       return `// File: ${file.name}
       (function(){
         const code = ${JSON.stringify(code)};
@@ -152,7 +146,11 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
           parserOpts: { plugins: ['jsx', 'typescript'] }
         }).code;
         const fn = new Function('React','useState','useEffect','useRef','Image','Link','Button','Card','CardHeader','CardTitle','CardContent', transformed + '; return ${componentName};');
-        window['${componentName}'] = fn(React, useState, useEffect, useRef, Image, Link, Button, Card, CardHeader, CardTitle, CardContent);
+        const evaluated = fn(React, useState, useEffect, useRef, Image, Link, Button, Card, CardHeader, CardTitle, CardContent);
+        window['${componentName}'] = function PreviewWrapper(props){
+          const result = typeof evaluated === 'function' ? evaluated(props) : evaluated;
+          return typeof result === 'function' ? React.createElement(result, props) : result;
+        };
       })();`
     })
     .join("\n")
