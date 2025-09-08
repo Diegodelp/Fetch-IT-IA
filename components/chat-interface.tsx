@@ -56,6 +56,7 @@ export function ChatInterface() {
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([])
   const [apiError, setApiError] = useState<string | null>(null)
+  const [customCode, setCustomCode] = useState("")
 
   useEffect(() => {
     const checkApiStatus = async () => {
@@ -124,7 +125,9 @@ export function ChatInterface() {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: "assistant",
-        content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Unknown error"}. Please try again.`,
+        content: `Sorry, I encountered an error: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }. Please try again.`,
       }
       setMessages((prev) => [...prev, errorMessage])
     } finally {
@@ -132,9 +135,31 @@ export function ChatInterface() {
     }
   }
 
-  const handleSuggestionClick = (suggestionText: string) => {
-    setMessage(suggestionText)
+const handleSuggestionClick = (suggestionText: string) => {
+  setMessage(suggestionText)
+}
+
+const handleCustomPreview = () => {
+  if (!customCode.trim()) return
+  const manualMessage: Message = {
+    id: Date.now().toString(),
+    type: "assistant",
+    content: "Previewing custom code",
+    files: [
+      {
+        name: "app/page.tsx",
+        content: customCode,
+      },
+    ],
   }
+  setMessages((prev) => [...prev, manualMessage])
+  setGeneratedFiles([
+    {
+      name: "app/page.tsx",
+      content: customCode,
+    },
+  ])
+}
 
   const downloadProject = () => {
     if (generatedFiles.length === 0) return
@@ -297,6 +322,24 @@ export default function RootLayout({
                 {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
               </Button>
             </div>
+          </div>
+        </Card>
+
+        <Card className="relative">
+          <div className="flex items-start space-x-4 p-4">
+            <div className="flex-1">
+              <Textarea
+                placeholder="Paste React code to preview..."
+                value={customCode}
+                onChange={(e) => setCustomCode(e.target.value)}
+                className="min-h-[100px] resize-none border-0 p-0 focus-visible:ring-0 text-base"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end p-4 pt-0">
+            <Button size="sm" disabled={!customCode.trim()} onClick={handleCustomPreview}>
+              Preview Code
+            </Button>
           </div>
         </Card>
 
