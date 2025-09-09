@@ -131,7 +131,12 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
         `function ${componentName}`
       )
       code = code.replace(
-        /export\s+default\s+/,
+        /export\s+default\s+([\w$]+);?/, 
+        (_match, name) =>
+          name === componentName ? "" : `const ${componentName} = ${name};`
+      )
+      code = code.replace(
+        /export\s+default\s*/, 
         `const ${componentName} = `
       )
       code = code.replace(/export\s+const\s+/g, "const ")
