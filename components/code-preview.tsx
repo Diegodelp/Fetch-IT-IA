@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -18,40 +18,147 @@ interface CodePreviewProps {
 }
 
 export function CodePreview({ files, onDownload }: CodePreviewProps) {
-  const [activeTab, setActiveTab] = useState("preview")
-  const [selectedFile, setSelectedFile] = useState<string>("")
-  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["app", "components"]))
+    const [activeTab, setActiveTab] = useState("preview")
+    const [selectedFile, setSelectedFile] = useState<string>("")
+    const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["app", "components"]))
 
-  useState(() => {
-    if (files.length > 0) {
-      const mainFile = files.find((f) => f.name === "app/page.tsx") || files[0]
-      setSelectedFile(mainFile.name)
-    }
-  }, [files])
+    // Select the initial file once the generated files are available
+    useEffect(() => {
+      if (files.length > 0) {
+        const mainFile = files.find((f) => f.name === "app/page.tsx") || files[0]
+        setSelectedFile(mainFile.name)
+      }
+    }, [files])
 
-  const organizeFiles = () => {
-    const structure: { [key: string]: GeneratedFile[] } = {}
+  interface TreeNode {
+    type: "file" | "folder"
+    name: string
+    path: string
+    children?: TreeNode[]
+  }
+
+  const buildFileTree = () => {
+    const root: TreeNode = { type: "folder", name: "root", path: "", children: [] }
 
     files.forEach((file) => {
       const parts = file.name.split("/")
-      if (parts.length === 1) {
-        // Root files
-        if (!structure["root"]) structure["root"] = []
-        structure["root"].push(file)
-      } else {
-        // Files in folders
-        const folder = parts[0]
-        if (!structure[folder]) structure[folder] = []
-        structure[folder].push(file)
-      }
+      let current = root
+      parts.forEach((part, index) => {
+        const currentPath = [...parts.slice(0, index + 1)].join("/")
+        if (index === parts.length - 1) {
+          current.children!.push({
+            type: "file",
+            name: part,
+            path: file.name,
+          })
+        } else {
+          let folder = current.children!.find(
+            (n) => n.type === "folder" && n.name === part,
+          ) as TreeNode | undefined
+          if (!folder) {
+            folder = { type: "folder", name: part, path: currentPath, children: [] }
+            current.children!.push(folder)
+          }
+          current = folder
+        }
+      })
     })
 
-    return structure
+    return root.children || []
   }
 
-  const fileStructure = organizeFiles()
+  const fileTree = buildFileTree()
+  const renderTree = (node: TreeNode) => {
+    if (node.type === "file") {
+      return (
+        <button
+          key={node.path}
+          onClick={() => setSelectedFile(node.path)}
+          className={`flex items-center w-full text-left px-2 py-1 text-sm rounded hover:bg-gray-200 ${
+            selectedFile === node.path ? "bg-emerald-100 text-emerald-700" : "text-gray-700"
+          }`}
+        >
+          <File className="w-4 h-4 mr-2" />
+          {node.name}
+        </button>
+      )
+    }
+    return (
+      <div key={node.path} className="mb-2">
+        <button
+          onClick={() => toggleFolder(node.path)}
+          className="flex items-center w-full text-left px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded"
+        >
+          {expandedFolders.has(node.path) ? (
+            <FolderOpen className="w-4 h-4 mr-2" />
+          ) : (
+            <Folder className="w-4 h-4 mr-2" />
+          )}
+          {node.name}/
+        </button>
+        {expandedFolders.has(node.path) && (
+          <div className="ml-4">
+            {node.children?.map((child) => renderTree(child))}
+          </div>
+        )}
+      </div>
+    )
+  }
   const currentFile = files.find((f) => f.name === selectedFile)
   const mainPageFile = files.find((f) => f.name === "app/page.tsx")
+
+  const toComponentName = (fileName: string) => {
+    const base = fileName.split("/").pop()?.split(".")[0] || "Component"
+    return base
+      .replace(/[-_](.)/g, (_, c) => c.toUpperCase())
+      .replace(/^(.)/, (c) => c.toUpperCase())
+  }
+
+  const previewFiles = [
+    ...files.filter((f) => f.name !== "app/page.tsx"),
+    files.find((f) => f.name === "app/page.tsx"),
+  ].filter(Boolean) as GeneratedFile[]
+
+  const previewScripts = previewFiles
+    .map((file) => {
+      const componentName =
+        file.name === "app/page.tsx" ? "MainComponent" : toComponentName(file.name)
+      let code = file.content
+      code = code.replace(/^import.*$/gm, "")
+      code = code.replace(/["']use client["'];?/g, "")
+      code = code.replace(
+        /export\s+default\s+function\s+(\w+)/,
+        `function ${componentName}`
+      )
+      code = code.replace(
+        /export\s+default\s+([\w$]+);?/, 
+        (_match, name) =>
+          name === componentName ? "" : `const ${componentName} = ${name};`
+      )
+      code = code.replace(
+        /export\s+default\s*/, 
+        `const ${componentName} = `
+      )
+      code = code.replace(/export\s+const\s+/g, "const ")
+      code = code.replace(/export\s+function\s+/g, "function ")
+      return `// File: ${file.name}
+      (function(){
+        const code = ${JSON.stringify(code)};
+        const transformed = Babel.transform(code, {
+          presets: ['env', 'react', 'typescript'],
+          sourceType: 'script',
+          filename: ${JSON.stringify(file.name)},
+          parserOpts: { plugins: ['jsx', 'typescript'] }
+        }).code;
+        const fn = new Function('React','useState','useEffect','useRef','Image','Link','Button','Card','CardHeader','CardTitle','CardContent', transformed + '; return ${componentName};');
+        const evaluated = fn(React, useState, useEffect, useRef, Image, Link, Button, Card, CardHeader, CardTitle, CardContent);
+        window['${componentName}'] = function PreviewWrapper(props){
+          const result = typeof evaluated === 'function' ? evaluated(props) : evaluated;
+          return typeof result === 'function' ? React.createElement(result, props) : result;
+        };
+      })();`
+    })
+    .join("\n")
 
   const handleCopyCode = () => {
     if (currentFile) {
@@ -139,15 +246,15 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, sans-serif; }
-    .error-container { 
-      color: #dc2626; 
-      background: #fef2f2; 
-      border: 1px solid #fecaca; 
-      border-radius: 8px; 
-      padding: 16px; 
-      margin: 16px 0; 
-      font-family: monospace; 
-      white-space: pre-wrap; 
+    .error-container {
+      color: #dc2626;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 8px;
+      padding: 16px;
+      margin: 16px 0;
+      font-family: monospace;
+      white-space: pre-wrap;
     }
   </style>
 </head>
@@ -155,15 +262,15 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
   <div id="root"></div>
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
-    
-    const Image = (props) => React.createElement('img', { 
-      ...props, 
+
+    const Image = (props) => React.createElement('img', {
+      ...props,
       onError: (e) => { e.target.src = 'https://via.placeholder.com/400x300?text=Image'; }
     });
-    
-    const Link = ({ href, children, ...props }) => 
+
+    const Link = ({ href, children, ...props }) =>
       React.createElement('a', { href: href || '#', ...props }, children);
-    
+
     const Button = ({ children, className = '', variant = 'default', size = 'default', ...props }) => {
       const baseClasses = 'inline-flex items-center justify-center rounded-md font-medium transition-colors px-4 py-2 bg-blue-600 text-white hover:bg-blue-700';
       return React.createElement('button', {
@@ -171,50 +278,30 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
         ...props
       }, children);
     };
-    
-    const Card = ({ children, className = '', ...props }) => 
-      React.createElement('div', { 
-        className: 'rounded-lg border bg-white shadow-sm p-6 ' + className, 
-        ...props 
+
+    const Card = ({ children, className = '', ...props }) =>
+      React.createElement('div', {
+        className: 'rounded-lg border bg-white shadow-sm p-6 ' + className,
+        ...props
       }, children);
-    
-    const CardHeader = ({ children, className = '', ...props }) => 
+
+    const CardHeader = ({ children, className = '', ...props }) =>
       React.createElement('div', { className: 'mb-4 ' + className, ...props }, children);
-    
-    const CardTitle = ({ children, className = '', ...props }) => 
+
+    const CardTitle = ({ children, className = '', ...props }) =>
       React.createElement('h3', { className: 'text-xl font-semibold ' + className, ...props }, children);
-    
-    const CardContent = ({ children, className = '', ...props }) => 
+
+    const CardContent = ({ children, className = '', ...props }) =>
       React.createElement('div', { className: className, ...props }, children);
 
     try {
-      let code = \`${mainPageFile.content.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`;
-      
-      // Remove imports
-      code = code.replace(/import[^;]+;\\s*/g, '');
-      
-      // Handle export default function
-      code = code.replace(/export\\s+default\\s+function\\s+(\\w+)/g, 'function MainComponent');
-      
-      // Handle export default arrow function
-      code = code.replace(/export\\s+default\\s+/g, 'const MainComponent = ');
-      
-      // If no component found, wrap the JSX
-      if (!code.includes('function MainComponent') && !code.includes('const MainComponent')) {
-        code = 'const MainComponent = () => (' + code + ');';
-      }
-      
-      const componentFunction = new Function('React', 'useState', 'useEffect', 'useRef', 'Image', 'Link', 'Button', 'Card', 'CardHeader', 'CardTitle', 'CardContent', code + '; return MainComponent;');
-      
-      const MainComponent = componentFunction(React, useState, useEffect, useRef, Image, Link, Button, Card, CardHeader, CardTitle, CardContent);
-      
+      ${previewScripts}
       const root = ReactDOM.createRoot(document.getElementById('root'));
-      root.render(React.createElement(MainComponent));
-      
+      root.render(React.createElement(window['MainComponent']));
     } catch (error) {
       console.error('Rendering error:', error);
-      document.getElementById('root').innerHTML = 
-        '<div class="error-container"><strong>Error rendering component:</strong>\\n\\n' + 
+      document.getElementById('root').innerHTML =
+        '<div class="error-container"><strong>Error rendering component:</strong>\\n\\n' +
         error.message + '\\n\\nPlease check the console for more details.</div>';
     }
   </script>
@@ -234,56 +321,7 @@ export function CodePreview({ files, onDownload }: CodePreviewProps) {
             <div className="w-64 border-r bg-gray-50 overflow-y-auto">
               <div className="p-3">
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Files</h3>
-                {Object.entries(fileStructure).map(([folder, folderFiles]) => (
-                  <div key={folder} className="mb-2">
-                    {folder === "root" ? (
-                      // Root files
-                      folderFiles.map((file) => (
-                        <button
-                          key={file.name}
-                          onClick={() => setSelectedFile(file.name)}
-                          className={`flex items-center w-full text-left px-2 py-1 text-sm rounded hover:bg-gray-200 ${
-                            selectedFile === file.name ? "bg-emerald-100 text-emerald-700" : "text-gray-700"
-                          }`}
-                        >
-                          <File className="w-4 h-4 mr-2" />
-                          {file.name}
-                        </button>
-                      ))
-                    ) : (
-                      // Folder structure
-                      <div>
-                        <button
-                          onClick={() => toggleFolder(folder)}
-                          className="flex items-center w-full text-left px-2 py-1 text-sm text-gray-700 hover:bg-gray-200 rounded"
-                        >
-                          {expandedFolders.has(folder) ? (
-                            <FolderOpen className="w-4 h-4 mr-2" />
-                          ) : (
-                            <Folder className="w-4 h-4 mr-2" />
-                          )}
-                          {folder}/
-                        </button>
-                        {expandedFolders.has(folder) && (
-                          <div className="ml-4">
-                            {folderFiles.map((file) => (
-                              <button
-                                key={file.name}
-                                onClick={() => setSelectedFile(file.name)}
-                                className={`flex items-center w-full text-left px-2 py-1 text-sm rounded hover:bg-gray-200 ${
-                                  selectedFile === file.name ? "bg-emerald-100 text-emerald-700" : "text-gray-700"
-                                }`}
-                              >
-                                <File className="w-4 h-4 mr-2" />
-                                {file.name.split("/").pop()}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                {fileTree.map((node) => renderTree(node))}
               </div>
             </div>
 
